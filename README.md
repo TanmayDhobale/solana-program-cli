@@ -1,42 +1,5 @@
 solana-program-cli
 
-## TODOs
-
-- Versioned swaps safety
-  - Add safe-send guard for Jupiter versioned transactions (preflight/simulation with ALTs or abort).
-  - Enforce quote freshness (TTL, slot drift) and re-quote logic; verify quote hash.
-
-- Program registry & config
-  - Replace hardcoded routing with signed JSON manifest (program_id, IDL URL/hash, client version).
-  - Auto-refresh and cache registry; validate checksums.
-
-- Error decoding
-  - Extend error maps beyond `send_program` to SPL Token-2022 and common AMMs invoked via Jupiter.
-  - Print precise decoded causes with links/docs.
-
-- Amounts & slippage policy
-  - Normalize amounts using mint decimals; display human-readable values.
-  - Add max slippage policy, per-mint allowlist, min/max per-tx limits.
-
-- Key management
-  - Support multiple key profiles and Ledger; avoid assuming `~/.config/solana/id.json`.
-
-- Observability
-  - Structured logs + metrics: route, programs touched, CU used, priority fees, decoded error codes.
-  - Optional tracing of CPI stack for failures.
-
-- CI & code health
-  - Fail build on warnings; remove deprecated imports (`system_program`).
-  - Add e2e tests: recorded Jupiter quotes, ATA flows, error decoding snapshots.
-
-- Jupiter flow hardening
-  - Pre-swap mint/ATA checks for Token-2022 extensions, delegates, freeze authority cases.
-  - Optional compute budget tuning (CU limit/price) based on route complexity.
-
-- Extensibility
-  - Thin plugin interface for adding new generated clients; one-line registry addition.
-  - Build step to regenerate clients when IDLs change (version pinned).
-===================
 
 Production-grade CLI to interact with Solana programs using Program IDs, with a hybrid engine:
 
@@ -119,3 +82,41 @@ Notes
 - Unknown programs are still supported via dynamic IDL+Borsh encoder
 
 
+
+## TODOs
+
+- Versioned swaps safety
+  - Add safe-send guard for Jupiter versioned transactions (preflight/simulation with ALTs or abort).
+  - Enforce quote freshness (TTL, slot drift) and re-quote logic; verify quote hash.
+
+- Program registry & config
+  - Replace hardcoded routing with signed JSON manifest (program_id, IDL URL/hash, client version).
+  - Auto-refresh and cache registry; validate checksums.
+
+- Error decoding
+  - Extend error maps beyond `send_program` to SPL Token-2022 and common AMMs invoked via Jupiter.
+  - Print precise decoded causes with links/docs.
+
+- Amounts & slippage policy
+  - Normalize amounts using mint decimals; display human-readable values.
+  - Add max slippage policy, per-mint allowlist, min/max per-tx limits.
+
+- Key management
+  - Support multiple key profiles and Ledger; avoid assuming `~/.config/solana/id.json`.
+
+- Observability
+  - Structured logs + metrics: route, programs touched, CU used, priority fees, decoded error codes.
+  - Optional tracing of CPI stack for failures.
+
+- CI & code health
+  - Fail build on warnings; remove deprecated imports (`system_program`).
+  - Add e2e tests: recorded Jupiter quotes, ATA flows, error decoding snapshots.
+
+- Jupiter flow hardening
+  - Pre-swap mint/ATA checks for Token-2022 extensions, delegates, freeze authority cases.
+  - Optional compute budget tuning (CU limit/price) based on route complexity.
+
+- Extensibility
+  - Thin plugin interface for adding new generated clients; one-line registry addition.
+  - Build step to regenerate clients when IDLs change (version pinned).
+===================
