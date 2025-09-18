@@ -1,0 +1,210 @@
+{
+  "address": "7JFPcs97cBb6bgfWiLsmA5Qpiv87oVA4Ue3TLinzNhxj",
+  "metadata": {
+    "name": "swap_program",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "get_pool_info",
+      "discriminator": [
+        9,
+        48,
+        220,
+        101,
+        22,
+        240,
+        78,
+        200
+      ],
+      "accounts": [
+        {
+          "name": "swap_pool"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "initialize",
+      "discriminator": [
+        175,
+        175,
+        109,
+        31,
+        13,
+        152,
+        155,
+        237
+      ],
+      "accounts": [
+        {
+          "name": "swap_pool",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "initial_sol_pool",
+          "type": "u64"
+        },
+        {
+          "name": "initial_token_pool",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "ping_swap",
+      "discriminator": [
+        228,
+        87,
+        187,
+        161,
+        115,
+        241,
+        73,
+        35
+      ],
+      "accounts": [
+        {
+          "name": "swap_pool"
+        }
+      ],
+      "args": [
+        {
+          "name": "message",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "swap_sol_for_tokens",
+      "discriminator": [
+        1,
+        171,
+        24,
+        135,
+        201,
+        236,
+        210,
+        219
+      ],
+      "accounts": [
+        {
+          "name": "swap_pool",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "sol_amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "swap_tokens_for_sol",
+      "discriminator": [
+        188,
+        116,
+        108,
+        23,
+        68,
+        33,
+        204,
+        220
+      ],
+      "accounts": [
+        {
+          "name": "swap_pool",
+          "writable": true
+        },
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "token_amount",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "SwapPool",
+      "discriminator": [
+        209,
+        31,
+        14,
+        115,
+        93,
+        168,
+        247,
+        50
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "AmountTooSmall",
+      "msg": "Amount too small for swap"
+    },
+    {
+      "code": 6001,
+      "name": "InsufficientLiquidity",
+      "msg": "Insufficient liquidity in the pool"
+    }
+  ],
+  "types": [
+    {
+      "name": "SwapPool",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "sol_reserve",
+            "type": "u64"
+          },
+          {
+            "name": "token_reserve",
+            "type": "u64"
+          },
+          {
+            "name": "total_swaps",
+            "type": "u64"
+          },
+          {
+            "name": "fee_rate",
+            "type": "u16"
+          }
+        ]
+      }
+    }
+  ]
+}
