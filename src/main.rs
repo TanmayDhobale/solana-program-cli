@@ -1369,11 +1369,11 @@ async fn handle_send_command(
                     println!("✅ Transaction signed successfully!");
                     println!("🔍 Signature: {}", signed_transaction.signatures[0]);
                     
-                    // Step 3: Execute with production settings
+                    // Step 3: Execute with production settings using safe-send guard
                     println!("\n🚀 Executing Jupiter swap on blockchain...");
-                    println!("ℹ️  Using direct send (ALTs not supported in simulation)");
+                    println!("🔒 Using safe-send guard with ALTs support and quote validation");
                     
-                    let result = simulator.send_versioned_transaction_direct(&signed_transaction)?;
+                    let result = jupiter_client.safe_send_versioned_transaction(&signed_transaction, &rpc_client).await?;
                     
                     if result.sent {
                         println!("\n🎉 Jupiter swap executed successfully!");
