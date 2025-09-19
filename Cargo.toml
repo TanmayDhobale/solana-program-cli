@@ -20,3 +20,4 @@ base64 = "0.22.1"
 bincode = { version = "2.0.1", features = ["serde"] }
 spl-token = "6.0"
 spl-associated-token-account = "4.0"
+sha2 = "0.10"
