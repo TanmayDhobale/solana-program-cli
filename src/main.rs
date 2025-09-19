@@ -24,8 +24,9 @@ use account_resolver::{AccountResolver, AccountResolution};
 use transaction_simulator::TransactionSimulator;
 use jupiter_client::{JupiterClient, QuoteRequest};
 use ata_manager::{AtaManager, CommonMints};
-use program_registry::{ProgramRegistry, ProgramRoute};
+use program_registry::{ProgramRegistry, ProgramRoute, ProgramManifest};
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 use solana_client::rpc_config::RpcSimulateTransactionConfig;
 use solana_client::rpc_response::RpcSimulateTransactionResult;
 
@@ -122,6 +123,10 @@ enum Commands {
     Swap {
         #[command(subcommand)]
         action: SwapActions,
+    },
+    Registry {
+        #[command(subcommand)]
+        action: RegistryActions,
     },
 }
 
@@ -289,6 +294,40 @@ enum SwapActions {
     },
 }
 
+#[derive(Subcommand)]
+enum RegistryActions {
+    List,
+    Stats,
+    Refresh,
+    Validate,
+    Add {
+        #[arg(long)]
+        program_id: String,
+        #[arg(long)]
+        name: String,
+        #[arg(long)]
+        idl_url: String,
+        #[arg(long)]
+        client_version: String,
+        #[arg(long)]
+        client_type: String,
+        #[arg(long, default_value = "5")]
+        priority: u8,
+    },
+    Remove {
+        #[arg(long)]
+        program_id: String,
+    },
+    Enable {
+        #[arg(long)]
+        program_id: String,
+    },
+    Disable {
+        #[arg(long)]
+        program_id: String,
+    },
+}
+
 
 const HELLO_WORLD_PROGRAM_ID: &str = "5PiuXarsz2F7Q6NpSCtdBbK6vroQWiGSdJZW3fPkjWHw";
 const CALCULATOR_PROGRAM_ID: &str = "5tAg6PUJU3AcBGwCJotSbBkGzEm4yNLM9nUK22rPCukq";
@@ -355,18 +394,36 @@ async fn main() -> Result<()> {
         
     let ata_manager = AtaManager::new(RpcClient::new(rpc_url.clone()));
 
+    println!("🔧 Initializing program registry...");
+    let mut program_registry = ProgramRegistry::load_or_create("./cache").await?;
+    if let Err(e) = program_registry.validate() {
+        println!("⚠️  Registry validation failed: {}", e);
+        println!("🔄 Refreshing registry...");
+        program_registry.refresh().await?;
+    }
+    if program_registry.needs_refresh() {
+        println!("🔄 Registry needs refresh, updating...");
+        program_registry.refresh().await?;
+    }
+    let stats = program_registry.get_stats();
+    println!("📊 Registry stats: {} programs ({} enabled, {} disabled)", 
+             stats.total_programs, stats.enabled_programs, stats.disabled_programs);
+
     match cli.command {
         Commands::HelloWorld { action } => {
-            handle_hello_world_command(&rpc_client, &payer, action).await?;
+            handle_hello_world_command(&rpc_client, &payer, &program_registry, action).await?;
         }
         Commands::Calculator { action } => {
-            handle_calculator_command(&rpc_client, &payer, action).await?;
+            handle_calculator_command(&rpc_client, &payer, &program_registry, action).await?;
         }
         Commands::Send { action } => {
-            handle_send_command(&rpc_client, &payer, action, &idl_loader, &encoder, &account_resolver, &simulator, &jupiter_client, &ata_manager).await?;
+            handle_send_command(&rpc_client, &payer, action, &idl_loader, &encoder, &account_resolver, &simulator, &jupiter_client, &ata_manager, &program_registry).await?;
         }
         Commands::Swap { action } => {
-            handle_swap_command(&rpc_client, &payer, action).await?;
+            handle_swap_command(&rpc_client, &payer, action, &idl_loader, &encoder, &account_resolver, &simulator, &jupiter_client, &ata_manager, &program_registry).await?;
+        }
+        Commands::Registry { action } => {
+            handle_registry_command(&mut program_registry, action).await?;
         }
     }
 
@@ -376,6 +433,7 @@ async fn main() -> Result<()> {
 async fn handle_hello_world_command(
     rpc_client: &RpcClient,
     payer: &Keypair,
+    program_registry: &ProgramRegistry,
     action: HelloWorldActions,
 ) -> Result<()> {
     let program_id = Pubkey::from_str(HELLO_WORLD_PROGRAM_ID)?;
@@ -521,6 +579,7 @@ async fn handle_hello_world_command(
 async fn handle_calculator_command(
     rpc_client: &RpcClient,
     payer: &Keypair,
+    program_registry: &ProgramRegistry,
     action: CalculatorActions,
 ) -> Result<()> {
     let program_id = Pubkey::from_str(CALCULATOR_PROGRAM_ID)?;
@@ -687,6 +746,7 @@ async fn handle_send_command(
     simulator: &TransactionSimulator,
     jupiter_client: &JupiterClient,
     ata_manager: &AtaManager,
+    program_registry: &ProgramRegistry,
 ) -> Result<()> {
     let program_id = Pubkey::from_str(SEND_PROGRAM_ID)?;
     
@@ -835,9 +895,9 @@ async fn handle_send_command(
                     println!("💰 Required rent: {} lamports ({} SOL)", required_rent, *required_rent as f64 / 1_000_000_000.0);
                     
             // Route to generated or dynamic per registry (demo: send program is generated)
-            let route = ProgramRegistry::resolve(&program_id);
+            let route = program_registry.resolve(&program_id);
             let instruction = match route {
-                ProgramRoute::GeneratedSendProgram => {
+                ProgramRoute::GeneratedClient(client_name) if client_name.starts_with("send_program") => {
                     generated::send_program::initialize_instruction(
                         *address, payer.pubkey(), system_program::id(),
                     )?
@@ -892,9 +952,9 @@ async fn handle_send_command(
             println!("🔑 Send Account (PDA): {}", send_account);
             
             // Route per registry
-            let route = ProgramRegistry::resolve(&program_id);
+            let route = program_registry.resolve(&program_id);
             let instruction = match route {
-                ProgramRoute::GeneratedSendProgram => {
+                ProgramRoute::GeneratedClient(client_name) if client_name.starts_with("send_program") => {
                     generated::send_program::send_sol_instruction(
                         lamports, recipient_pubkey, *send_account,
                         payer.pubkey(), recipient_pubkey, system_program::id(),
@@ -945,9 +1005,9 @@ async fn handle_send_command(
             println!("📋 Program ID: {}", program_id);
             println!("🔑 Account (PDA): {}", send_account);
             
-            let route = ProgramRegistry::resolve(&program_id);
+            let route = program_registry.resolve(&program_id);
             let instruction = match route {
-                ProgramRoute::GeneratedSendProgram => {
+                ProgramRoute::GeneratedClient(client_name) if client_name.starts_with("send_program") => {
                     generated::send_program::get_stats_instruction(*send_account)?
                 }
                 _ => {
@@ -1416,6 +1476,13 @@ async fn handle_swap_command(
     rpc_client: &RpcClient,
     payer: &Keypair,
     action: SwapActions,
+    idl_loader: &IdlLoader,
+    encoder: &BorshEncoder,
+    account_resolver: &AccountResolver,
+    simulator: &TransactionSimulator,
+    jupiter_client: &JupiterClient,
+    ata_manager: &AtaManager,
+    program_registry: &ProgramRegistry,
 ) -> Result<()> {
     let program_id = Pubkey::from_str(SWAP_PROGRAM_ID)?;
     
@@ -1599,6 +1666,132 @@ async fn handle_swap_command(
             println!("✅ Transaction signature: {}", signature);
             println!("🏓 Ping sent! Check logs for pong response.");
             println!("🔍 Use: solana confirm -v {} --url devnet", signature);
+        }
+    }
+
+    Ok(())
+}
+
+async fn handle_registry_command(
+    program_registry: &mut ProgramRegistry,
+    action: RegistryActions,
+) -> Result<()> {
+    match action {
+        RegistryActions::List => {
+            println!("📋 Program Registry - All Programs:");
+            println!("=====================================");
+            
+            let programs = program_registry.list_programs();
+            for (i, program) in programs.iter().enumerate() {
+                println!("{}. {} ({})", i + 1, program.name, program.program_id);
+                println!("   📝 Description: {}", program.description.as_deref().unwrap_or("None"));
+                println!("   🔗 IDL URL: {}", program.idl_url);
+                println!("   📦 Client: {} v{}", program.client_type, program.client_version);
+                println!("   ⭐ Priority: {}/10", program.priority);
+                println!("   ✅ Status: {}", if program.enabled { "Enabled" } else { "Disabled" });
+                if let Some(metadata) = &program.metadata {
+                    if let Some(category) = metadata.get("category") {
+                        println!("   🏷️  Category: {}", category);
+                    }
+                }
+                println!();
+            }
+        }
+        
+        RegistryActions::Stats => {
+            let stats = program_registry.get_stats();
+            println!("📊 Program Registry Statistics:");
+            println!("===============================");
+            println!("Total Programs: {}", stats.total_programs);
+            println!("Enabled: {}", stats.enabled_programs);
+            println!("Disabled: {}", stats.disabled_programs);
+            println!("Last Updated: {}", stats.last_updated);
+            println!("Cache TTL: {} seconds", stats.cache_ttl);
+            println!("Auto Refresh: {}", if stats.auto_refresh { "Yes" } else { "No" });
+        }
+        
+        RegistryActions::Refresh => {
+            println!("🔄 Refreshing program registry...");
+            program_registry.refresh().await?;
+            println!("✅ Registry refreshed successfully!");
+        }
+        
+        RegistryActions::Validate => {
+            println!("🔍 Validating program registry...");
+            match program_registry.validate() {
+                Ok(_) => println!("✅ Registry validation passed!"),
+                Err(e) => println!("❌ Registry validation failed: {}", e),
+            }
+        }
+        
+        RegistryActions::Add { program_id, name, idl_url, client_version, client_type, priority } => {
+            println!("➕ Adding program to registry...");
+            
+            // Validate program ID
+            let _: Pubkey = program_id.parse()
+                .map_err(|_| anyhow::anyhow!("Invalid program ID: {}", program_id))?;
+            
+            let program = ProgramManifest {
+                program_id: program_id.clone(),
+                name: name.clone(),
+                description: None,
+                idl_url: idl_url.clone(),
+                idl_hash: "".to_string(), // Will be calculated on refresh
+                client_version: client_version.clone(),
+                client_type: client_type.clone(),
+                generated_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                last_updated: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs(),
+                priority,
+                enabled: true,
+                metadata: Some(HashMap::from([
+                    ("category".to_string(), "user".to_string()),
+                    ("maintainer".to_string(), "user".to_string()),
+                ])),
+            };
+            
+            program_registry.add_program(program);
+            program_registry.save_to_cache().await?;
+            
+            println!("✅ Program '{}' added to registry!", name);
+        }
+        
+        RegistryActions::Remove { program_id } => {
+            println!("🗑️  Removing program from registry...");
+            
+            if program_registry.remove_program(&program_id) {
+                program_registry.save_to_cache().await?;
+                println!("✅ Program '{}' removed from registry!", program_id);
+            } else {
+                println!("❌ Program '{}' not found in registry!", program_id);
+            }
+        }
+        
+        RegistryActions::Enable { program_id } => {
+            println!("✅ Enabling program in registry...");
+            
+            if let Some(program) = program_registry.get_program(&program_id.parse()?) {
+                let mut updated_program = program.clone();
+                updated_program.enabled = true;
+                program_registry.add_program(updated_program);
+                program_registry.save_to_cache().await?;
+                println!("✅ Program '{}' enabled!", program_id);
+            } else {
+                println!("❌ Program '{}' not found in registry!", program_id);
+            }
+        }
+        
+        RegistryActions::Disable { program_id } => {
+            println!("❌ Disabling program in registry...");
+            
+            if let Some(program) = program_registry.get_program(&program_id.parse()?) {
+                let mut updated_program = program.clone();
+                updated_program.enabled = false;
+                program_registry.add_program(updated_program);
+                program_registry.save_to_cache().await?;
+                println!("✅ Program '{}' disabled!", program_id);
+            } else {
+                println!("❌ Program '{}' not found in registry!", program_id);
+            }
         }
     }
 
